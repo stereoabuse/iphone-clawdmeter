@@ -1,0 +1,430 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Clawdmeter</title>
+<style>
+  :root {
+    --bg: #141413; --card: #232320; --text: #f0eee6; --dim: #9a978c;
+    --accent: #d97757; --green: #6fb36a; --amber: #e0a43c; --red: #e05a4e; --track: #3a3934;
+  }
+  * { box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Helvetica Neue", sans-serif; overflow: hidden; }
+  #app { height: 100%; display: flex; flex-direction: column; padding: 14px 16px 12px; }
+  .top { display: flex; justify-content: space-between; align-items: baseline; color: var(--dim); font-size: 15px; }
+  #clock { font-size: 17px; color: var(--text); font-variant-numeric: tabular-nums; }
+  #meters { transition: opacity .4s; }
+  #meters.stale { opacity: .4; }
+  .card { background: var(--card); border-radius: 18px; padding: 14px 16px 16px; margin-top: 12px; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; }
+  .label { font-size: 15px; color: var(--dim); letter-spacing: .02em; }
+  .pct { font-family: ui-serif, "New York", Georgia, serif; font-size: 44px; line-height: 1; }
+  .pct small { font-size: 22px; color: var(--dim); }
+  .bar { position: relative; height: 12px; background: var(--track); border-radius: 6px; margin: 12px 0 8px; overflow: hidden; }
+  .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; background: var(--green); transition: width .6s, background .6s; }
+  .pace { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--text); opacity: .7; }
+  .reset { font-size: 14px; color: var(--dim); }
+  #stage { flex: 1; display: flex; align-items: flex-end; justify-content: center; min-height: 0; overflow: hidden; }
+  #clawd { image-rendering: pixelated; image-rendering: crisp-edges; max-width: 100%; max-height: 100%; }
+  #status { text-align: center; color: var(--accent); font-size: 17px; height: 24px; margin-top: 6px; }
+  #hint { position: absolute; right: 12px; bottom: 10px; font-size: 12px; color: var(--dim); opacity: .7; }
+  #alert { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: var(--amber); color: #1b1a17; display: none;
+    flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 28px; }
+  #alert.on { display: flex; animation: pulse 1.6s ease-in-out infinite; }
+  #alert h1 { font-family: ui-serif, "New York", Georgia, serif; font-size: 40px; margin: 0 0 14px; line-height: 1.1; }
+  #alertFrom { font-size: 16px; opacity: .7; margin-bottom: 8px; width: 100%; }
+  #alert p { font-size: 22px; margin: 0; max-height: 40vh; overflow: hidden; }
+  #alert .tap { position: absolute; bottom: 22px; font-size: 14px; opacity: .65; }
+  #alertClawd { margin-top: 26px; image-rendering: pixelated; }
+  #main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  #side { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  #keys { display: flex; margin-top: 10px; }
+  .key { flex: 1; margin-left: 8px; height: 66px; border-radius: 16px; background: var(--card); color: var(--text);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 13px; transition: background .1s, opacity .2s; }
+  .key:first-child { margin-left: 0; }
+  .key .ic { font-size: 26px; line-height: 1; margin-bottom: 4px; height: 26px; }
+  .key.down { background: var(--accent); }
+  .key.off { opacity: .3; }
+  .key.soft { opacity: .55; }
+  #keys .key.ans { font-size: 15px; padding: 0 6px; text-align: center; line-height: 1.15; }
+  #keys .key.ans.acc { background: #1f4d22; color: #e9f7e6; }
+  #alertKeys { display: flex; width: 100%; margin-top: 24px; }
+  #alertKeys .key { height: 76px; font-size: 17px; }
+  #alertKeys .acc { background: #1f4d22; color: #e9f7e6; }
+  #alertKeys .rej { background: #1b1a17; color: #f0eee6; }
+  @media (orientation: landscape) {
+    #app { padding: 10px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left)); }
+    #main { flex-direction: row; }
+    #side { margin-left: 16px; }
+    #meters { flex: 1.1; display: flex; flex-direction: column; justify-content: center; }
+    .card { margin-top: 8px; padding: 10px 14px 12px; }
+    .pct { font-size: 36px; }
+    .bar { margin: 8px 0 6px; }
+    #side { flex: 1; justify-content: flex-end; }
+    #alert { flex-direction: row; flex-wrap: wrap; }
+    #alert h1 { font-size: 32px; width: 100%; }
+    #alertClawd { margin: 10px 0 0; }
+    #alertKeys { margin-top: 12px; }
+    .key { height: 54px; }
+    .key .ic { font-size: 22px; height: 22px; margin-bottom: 2px; }
+    #alertClawd { display: none; }
+  }
+  @keyframes pulse { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.12); } }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="top"><span id="clock">--:--</span><span id="sessions"></span></div>
+  <div id="main">
+  <div id="meters" class="stale">
+    <div class="card" id="cardS">
+      <div class="row"><span class="label">Session</span><span class="pct" id="pctS">--<small>%</small></span></div>
+      <div class="bar"><div class="fill" id="fillS"></div><div class="pace" id="paceS"></div></div>
+      <div class="reset" id="resetS">&nbsp;</div>
+    </div>
+    <div class="card" id="cardW">
+      <div class="row"><span class="label">Weekly</span><span class="pct" id="pctW">--<small>%</small></span></div>
+      <div class="bar"><div class="fill" id="fillW"></div><div class="pace" id="paceW"></div></div>
+      <div class="reset" id="resetW">&nbsp;</div>
+    </div>
+  </div>
+  <div id="side">
+    <div id="stage"><canvas id="clawd"></canvas></div>
+    <div id="status">Waiting…</div>
+    <div id="keys"></div>
+  </div>
+  </div>
+</div>
+<div id="hint">tap for sound</div>
+<div id="alert"><div id="alertFrom"></div><h1 id="alertTitle">Claude needs you</h1><p id="alertMsg"></p><canvas id="alertClawd"></canvas>
+  <div id="alertKeys"></div>
+  <div class="tap">tap elsewhere to hide</div></div>
+<script>
+(function () {
+  var DATA = /*CLAWD_DATA*/null;
+  var VERSION = "/*PAGE_VERSION*/";
+  var anims = {};
+  (DATA ? DATA.anims : []).forEach(function (a) { anims[a.name] = a; });
+  var PERSONAS = (DATA ? DATA.anims : []).filter(function (a) { return a.category === "persona" && a.name !== "lurking"; }).map(function (a) { return a.name; });
+  var FIDGETS = ["waving", "jumping", "crab walking", "walking"];
+  var VERBS = ["Pondering", "Noodling", "Clauding", "Tinkering", "Percolating", "Musing", "Scheming",
+    "Brewing", "Conjuring", "Whittling", "Simmering", "Cogitating", "Finagling", "Spelunking", "Puttering"];
+  var $ = function (id) { return document.getElementById(id); };
+
+  var state = { ok: false };
+  var outbox = [];
+  var lastEs = null, lastS = null, lastAlert = null, lastUpdate = 0;
+  var audio = null;
+  // The phone's clock can be years off (no network), so time comes from the PC: t = PC epoch, tz = PC UTC offset.
+  var skew = 0, tz = -new Date().getTimezoneOffset() * 60;
+  function nowSec() { return Date.now() / 1000 + skew; }
+  function local(epoch) { return new Date((epoch + tz) * 1000); }
+  // A reloaded page can leave the previous copy's timers running; only the newest copy may draw.
+  var me = {};
+  window.__cmInstance = me;
+  function alive() { return window.__cmInstance === me; }
+
+  // ---------- Clawd renderer ----------
+  function Sprite(canvas, cell) {
+    this.c = canvas; this.ctx = canvas.getContext("2d"); this.cell = cell;
+    canvas.width = 55 * cell; canvas.height = 37 * cell;
+    this.anim = null; this.frame = 0; this.once = false; this.next = 0; this.onDone = null;
+  }
+  Sprite.prototype.play = function (name, once, onDone) {
+    var a = anims[name]; if (!a) return;
+    if (this.anim === a && !once && !this.once) return;
+    this.anim = a; this.frame = 0; this.once = !!once; this.onDone = onDone || null; this.next = 0;
+  };
+  Sprite.prototype.tick = function (now) {
+    var a = this.anim; if (!a || now < this.next) return;
+    this.draw(a, this.frame);
+    this.next = now + (a.holds[this.frame] || 100);
+    var last = a.frames.length - 1;
+    if (this.once) {
+      if (this.frame >= last) { this.anim = null; var cb = this.onDone; this.onDone = null; this.once = false; if (cb) cb(); return; }
+      this.frame++;
+    } else {
+      this.frame = this.frame >= a.loop[1] ? a.loop[0] : this.frame + 1;
+    }
+  };
+  Sprite.prototype.draw = function (a, f) {
+    var ctx = this.ctx, s = this.cell, cells = a.frames[f], w = a.w;
+    ctx.clearRect(0, 0, this.c.width, this.c.height);
+    for (var i = 0; i < cells.length; i++) {
+      var p = cells.charCodeAt(i); if (p === 48) continue;
+      var idx = p < 58 ? p - 48 : p - 87;
+      ctx.fillStyle = a.palette[idx];
+      ctx.fillRect((a.ox + i % w) * s, (a.oy + Math.floor(i / w)) * s, s, s);
+    }
+  };
+
+  var main = new Sprite($("clawd"), 6);
+  var alertSprite = new Sprite($("alertClawd"), 5);
+
+  // ---------- director (simplified) ----------
+  var busy = false, nextIdleAct = Date.now() + 20000;
+  function base() {
+    if (busy) return;
+    if (state.alert) main.play("pointing");
+    else if (state.working) main.play("laptop");
+    else main.play("idle");
+  }
+  if (anims.walking) anims.idle = { name: "idle", w: anims.walking.w, h: anims.walking.h, ox: anims.walking.ox,
+    oy: anims.walking.oy, loop: [0, 0], palette: anims.walking.palette, holds: [500], frames: [anims.walking.frames[0]] };
+  function perform(name) {
+    if (!anims[name]) return;
+    busy = true;
+    main.play(name, true, function () { busy = false; base(); });
+  }
+  function directorTick(now) {
+    if (!busy && !state.alert && !state.working && now > nextIdleAct) {
+      var pool = Math.random() < 0.35 ? PERSONAS : FIDGETS;
+      perform(pool[Math.floor(Math.random() * pool.length)]);
+      nextIdleAct = now + 60000 + Math.random() * 120000;
+    }
+  }
+
+  // ---------- meters ----------
+  function fmtLeft(sec) {
+    if (sec == null || sec < 0) return "";
+    var m = Math.round(sec / 60);
+    if (m < 60) return m + "m";
+    var h = Math.floor(m / 60); m = m % 60;
+    if (h < 48) return h + "h " + m + "m";
+    return Math.floor(h / 24) + "d " + (h % 24) + "h";
+  }
+  function fmtWhen(epoch) {
+    var d = local(epoch);
+    var days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    var h = d.getUTCHours(), mm = ("0" + d.getUTCMinutes()).slice(-2);
+    var ap = h >= 12 ? "pm" : "am"; h = h % 12 || 12;
+    return days[d.getUTCDay()] + " " + h + ":" + mm + ap;
+  }
+  function meter(key, pct, resetAt, windowSec) {
+    var now = nowSec();
+    $("pct" + key).innerHTML = (pct == null ? "--" : Math.round(pct)) + "<small>%</small>";
+    var p = Math.max(0, Math.min(100, pct || 0));
+    var fill = $("fill" + key), pace = $("pace" + key);
+    fill.style.width = p + "%";
+    var color = "var(--green)";
+    if (resetAt) {
+      var elapsed = Math.max(0, Math.min(1, 1 - (resetAt - now) / windowSec)) * 100;
+      pace.style.display = ""; pace.style.left = "calc(" + elapsed + "% - 1px)";
+      if (p >= 100) color = "var(--red)"; else if (p > elapsed + 2) color = "var(--amber)";
+      var left = resetAt - now;
+      $("reset" + key).textContent = left > 0
+        ? (key === "S" ? "Resets in " + fmtLeft(left) : "Resets " + fmtWhen(resetAt) + " · " + fmtLeft(left))
+        : "Resetting…";
+    } else {
+      pace.style.display = "none";
+      if (p >= 100) color = "var(--red)"; else if (p >= 80) color = "var(--amber)";
+      $("reset" + key).textContent = key === "S" ? "No session running" : " ";
+    }
+    fill.style.background = color;
+  }
+  function render() {
+    if (!alive()) return;
+    if (state.connected && Date.now() - lastUpdate >= 90000) {  // the PC went quiet
+      state.connected = false; state.alert = null; state.working = false;
+      showAlert(null); lastAlert = null; if (!busy) base(); renderKeys();
+    }
+    var st = state;
+    var fresh = st.ok && (Date.now() - lastUpdate < 90000) && !st.stale;
+    $("meters").className = fresh ? "" : "stale";
+    if (st.ok) {
+      meter("S", st.s, st.sr_at, 5 * 3600);
+      meter("W", st.w, st.wr_at, 7 * 86400);
+    }
+    var n = st.n || 0;
+    $("sessions").textContent = n ? n + (n === 1 ? " session" : " sessions") : "";
+    var d = local(nowSec()), h = d.getUTCHours() % 12 || 12;
+    $("clock").textContent = h + ":" + ("0" + d.getUTCMinutes()).slice(-2);
+  }
+  var verbIdx = 0, verbAt = 0;
+  function statusTick(now) {
+    var el = $("status");
+    if (!state.connected) { el.textContent = "Waiting for PC…"; return; }
+    if (state.alert) { el.textContent = (state.alert.title || "Claude needs you") + (state.alert.dir ? " · " + state.alert.dir : ""); return; }
+    if (!state.ok) { el.textContent = state.err || "No usage data…"; return; }
+    if (state.working) {
+      if (now > verbAt) { verbIdx = Math.floor(Math.random() * VERBS.length); verbAt = now + 4000; }
+      var dots = ".".repeat(1 + Math.floor(now / 400) % 3);
+      el.textContent = "✻ " + VERBS[verbIdx] + dots;
+    } else {
+      el.textContent = "Idle";
+    }
+  }
+
+  // ---------- alert ----------
+  function showAlert(a) {
+    var box = $("alert");
+    if (a) {
+      $("alertMsg").textContent = a.m || "";
+      $("alertTitle").textContent = a.title || "Claude needs you";
+      $("alertFrom").textContent = a.dir ? "from " + a.dir : "";
+      renderAlertKeys(a);
+      box.className = "on";
+      alertSprite.play("pointing");
+    } else {
+      box.className = "";
+      alertSprite.anim = null;
+    }
+  }
+  // One button per answer; the PC types it and presses Enter. The highlighted answer is shown green.
+  function addAnswerButtons(box, a, extraCls) {
+    (a.opts || []).forEach(function (label, i) {
+      var b = document.createElement("div");
+      var primary = i === 0 && a.primary;
+      b.className = "key " + extraCls + " " + (primary ? "acc" : "rej");
+      b.textContent = label;
+      b.addEventListener("touchstart", function (ev) { ev.stopPropagation(); b.className += " down"; });
+      b.addEventListener("touchcancel", function () { b.className = b.className.replace(/ down/g, ""); });
+      b.addEventListener("touchend", function (ev) {
+        ev.preventDefault(); ev.stopPropagation();
+        outbox.push({ reply: label, id: a.id, at: Date.now() });
+        state.alert = null; showAlert(null); base(); renderKeys();
+      });
+      box.appendChild(b);
+    });
+  }
+  function keyHtml(k, icon, label, cls) {
+    return '<div class="key ' + (cls || "") + '" data-k="' + k + '"><span class="ic">' + icon + "</span>" + label + "</div>";
+  }
+  function renderAlertKeys(a) {
+    var box = $("alertKeys");
+    box.innerHTML = "";
+    if ((a.opts || []).length) { addAnswerButtons(box, a, ""); return; }
+    // A question's choices aren't on the phone, so Accept would be a blind Enter on the first one.
+    box.innerHTML = (a.question ? "" : keyHtml("accept", "✓", "Accept", "acc")) + keyHtml("reject", "✕", "Reject", "rej");
+    Array.prototype.forEach.call(box.querySelectorAll(".key"), wireKey);
+  }
+  // Hiding the alert only hides the overlay; the question stays answerable from the keypad.
+  function hideAlert() { showAlert(null); base(); }
+  $("alert").addEventListener("click", function (ev) { ev.stopPropagation(); hideAlert(); });
+
+  // ---------- keypad ----------
+  // Keys fire on touchend (preventDefault stops the delayed click).
+  function wireKey(el) {
+    var k = el.getAttribute("data-k");
+    el.addEventListener("touchstart", function (ev) {
+      ev.stopPropagation();
+      if (el.className.indexOf("off") >= 0) return;
+      el.className += " down";
+    });
+    var end = function (ev) {
+      ev.preventDefault(); ev.stopPropagation();
+      var wasDown = el.className.indexOf("down") >= 0;
+      el.className = el.className.replace(/ down/g, "");
+      if (!wasDown || ev.type === "touchcancel") return;
+      var answersPrompt = state.alert && !(state.alert.opts || []).length;
+      outbox.push({ key: k, id: answersPrompt ? state.alert.id : null, at: Date.now() });
+      if (answersPrompt && (k === "accept" || k === "reject")) { state.alert = null; showAlert(null); base(); }
+      renderKeys();
+    };
+    el.addEventListener("touchend", end);
+    el.addEventListener("touchcancel", end);
+  }
+  // The keypad only offers what can work right now:
+  //   a question waiting -> its answers (plus Stop if something is running)
+  //   otherwise          -> Send (dim: we can't tell if anything is typed), Accept (permission prompts), Stop (while working)
+  var keysSig = null;
+  function renderKeys() {
+    var a = state.alert, working = !!state.working;
+    var sig = (a ? a.id : "") + "|" + working;
+    if (sig !== keysSig) {
+      keysSig = sig;
+      var box = $("keys");
+      box.innerHTML = "";
+      if (a && (a.opts || []).length) {
+        addAnswerButtons(box, a, "ans");
+        if (working) box.insertAdjacentHTML("beforeend", keyHtml("reject", "✕", "Stop"));
+      } else {
+        box.innerHTML = keyHtml("send", "↵", "Send", "soft") +
+          keyHtml("accept", "✓", "Accept", a && !a.question ? "" : "off") +
+          keyHtml("reject", "✕", "Stop", working ? "" : "off");
+      }
+      Array.prototype.forEach.call(box.querySelectorAll("[data-k]"), wireKey);
+    }
+  }
+
+
+  // ---------- sound ----------
+  function chime(kind) {
+    if (!audio) return;
+    var notes = kind === "alert" ? [784, 1047] : kind === "reset" ? [523, 659, 784] : [659];
+    var t = audio.currentTime;
+    notes.forEach(function (f, i) {
+      var o = audio.createOscillator(), g = audio.createGain();
+      o.type = "sine"; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t + i * 0.16);
+      g.gain.exponentialRampToValueAtTime(0.3, t + i * 0.16 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.16 + 0.5);
+      o.connect(g); g.connect(audio.destination);
+      o.start(t + i * 0.16); o.stop(t + i * 0.16 + 0.55);
+    });
+  }
+  // iOS only allows audio that starts inside a touch, and the ringer switch mutes Web Audio.
+  function unlockAudio() {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    if (!audio) audio = new AC();
+    var b = audio.createBuffer(1, 1, 22050), src = audio.createBufferSource();
+    src.buffer = b; src.connect(audio.destination); src.start(0);
+    var done = function () { if (audio.state === "running") { $("hint").style.display = "none"; chime("event"); } };
+    if (audio.resume) audio.resume().then(done, done); else done();
+  }
+  document.addEventListener("touchend", function () {
+    if (!audio || audio.state !== "running") unlockAudio();
+  }, true);
+  document.body.addEventListener("click", function () {
+    if (!audio || audio.state !== "running") unlockAudio();
+    outbox.push({ tap: true, at: Date.now() });
+  });
+
+  // ---------- API for the PC ----------
+  window.__cm = {
+    v: VERSION,
+    update: function (s) {
+      if (!alive()) return "stale-instance";
+      state = s; lastUpdate = Date.now();
+      if (s.t) skew = s.t - Date.now() / 1000;
+      if (s.tz != null) tz = s.tz;
+      if (s.es != null && lastEs != null && s.es !== lastEs && !s.alert) {
+        if (s.e === "p") perform("waving");
+        else if (s.e === "s") perform("jumping happy");
+      }
+      lastEs = s.es;
+      if (lastS != null && s.ok && s.s != null && lastS - s.s >= 20) { perform("dancing"); chime("reset"); }
+      if (s.ok && s.s != null) lastS = s.s;
+      var aid = s.alert ? s.alert.id : null;
+      if (aid !== lastAlert) { showAlert(s.alert); if (s.alert) chime("alert"); lastAlert = aid; }
+      if (!busy) base();
+      render(); renderKeys();
+      return "ok";
+    },
+    // Taps wait here while the PC is away; stale ones are dropped, not replayed as keystrokes later.
+    drain: function () {
+      var cutoff = Date.now() - 10000;
+      var o = outbox.filter(function (m) { return m.at >= cutoff; });
+      outbox = [];
+      return JSON.stringify(o);
+    },
+    ping: function () { return VERSION + "|" + document.visibilityState; }
+  };
+
+  // ---------- loop ----------
+  function loop() {
+    if (!alive()) return;
+    var now = Date.now();
+    main.tick(now); alertSprite.tick(now);
+    directorTick(now); statusTick(now);
+    requestAnimationFrame(loop);
+  }
+  var timer = setInterval(function () { if (alive()) render(); else clearInterval(timer); }, 15000);
+  base(); render(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
